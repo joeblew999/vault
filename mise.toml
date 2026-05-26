@@ -18,6 +18,7 @@ experimental = true
 [tools]
 "github:jdx/fnox"        = "1.24"
 "github:nushell/nushell" = "0.112"
+"npm:@bitwarden/cli"     = "latest"
 # All other tools (node, wrangler, rust, etc.) come from each runner's own mise.toml.
 # Vault repo only orchestrates clone + delegate.
 
@@ -72,3 +73,9 @@ run         = "mise run tail"
 [tasks."all:setup"]
 description = "Clone both runners."
 depends     = ["ov:setup", "nw:setup"]
+
+# ── demos ──────────────────────────────────────────────────────────────────
+
+[tasks."demo:sync"]
+description = "Two-way sync demo: fnox keychain ⇄ orangevault. Uses dummy secret FNOX_OV_DEMO; requires `mise run ov:dev` running in another terminal."
+run         = "nu scripts/sync-demo.nu"
