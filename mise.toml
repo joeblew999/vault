@@ -18,6 +18,7 @@ experimental = true
 [tools]
 "github:jdx/fnox"        = "1.24"
 "github:nushell/nushell" = "0.112"
+"npm:@bitwarden/cli"     = "latest"   # bw — used by test:flow to prove crypto compat
 # All other tools (node, wrangler, rust, etc.) come from each runner's own mise.toml.
 # Vault repo only orchestrates clone + delegate.
 
@@ -86,3 +87,8 @@ run = '''
 $env.OV_SERVER = (^fnox get ORANGEVAULT_DOMAIN | str trim)
 ^nu scripts/sync-demo.nu
 '''
+
+[tasks."test:flow"]
+description = "End-to-end stack test: orangevault-cli register → admin ListUsers → bw login → bw logout. Uses unique email per run, hits the deployed workers."
+depends     = []
+run         = "nu scripts/test-flow.nu"
