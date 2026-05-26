@@ -50,9 +50,16 @@ def step1_preflight [] {
         print --stderr $"  ✗ orangevault-admin not responding \(HTTP ($admin_code)\)"
         exit 1
     }
+    let admin_token = (try { ^fnox get ORANGEVAULT_ADMIN_TOKEN | complete } catch { null })
+    if $admin_token == null or $admin_token.exit_code != 0 {
+        print --stderr "  ✗ ORANGEVAULT_ADMIN_TOKEN not in fnox keychain"
+        print --stderr "    fnox set --global -p keychain ORANGEVAULT_ADMIN_TOKEN"
+        exit 1
+    }
     print $"  ✓ cli binary present"
     print $"  ✓ orangevault         /alive    HTTP 200"
     print $"  ✓ orangevault-admin   /healthz  HTTP 200"
+    print $"  ✓ ORANGEVAULT_ADMIN_TOKEN in fnox"
 }
 
 def step2_register [] {
@@ -83,9 +90,27 @@ def step2_register [] {
 def step3_admin_lists_user [email: string] {
     print ""
     print "── 3/5 admin ListUsers contains new account ──"
+
+    # Verify auth gate first: unauthenticated request must be rejected.
+    let unauth_code = (
+        ^curl -s -o /dev/null -w "%{http_code}"
+            -X POST
+            -H "Content-Type: application/json"
+            -d '{}'
+            $"($ADMIN_SERVER)/orangevault_admin.v1.AdminService/ListUsers"
+        | str trim
+    )
+    if $unauth_code != "401" {
+        print --stderr $"  ✗ unauthenticated request returned HTTP ($unauth_code), expected 401"
+        exit 1
+    }
+    print "  ✓ auth gate: unauthenticated → HTTP 401"
+
+    let token = (^fnox get ORANGEVAULT_ADMIN_TOKEN | str trim)
     let resp = (
         ^curl -s -X POST
             -H "Content-Type: application/json"
+            -H $"Authorization: Bearer ($token)"
             -d '{"limit":100}'
             $"($ADMIN_SERVER)/orangevault_admin.v1.AdminService/ListUsers"
         | from json
