@@ -1,0 +1,74 @@
+[settings]
+experimental = true
+
+# vault — orchestrator for vault runners. Pure orchestration:
+# upstream repos clone into this dir on demand (gitignored).
+#
+# Runners (both forks under joeblew999/, both carry their own mise.toml + fnox.toml):
+#   ov: joeblew999/orangevault     (Rust/WASM, fork of connyay/orangevault, main branch)
+#   nw: joeblew999/nodewarden      (TS,        fork of shuaiplus/nodewarden, joeblew999 branch)
+#
+# First-time spin-up:
+#   1. fnox set --global -p keychain CLOUDFLARE_API_TOKEN
+#      fnox set --global -p keychain CLOUDFLARE_ACCOUNT_ID
+#   2. mise install
+#   3. mise run all:setup
+#   4. mise run nw:dev   (or)   mise run ov:dev
+
+[tools]
+"github:jdx/fnox"        = "1.24"
+"github:nushell/nushell" = "0.112"
+# All other tools (node, wrangler, rust, etc.) come from each runner's own mise.toml.
+# Vault repo only orchestrates clone + delegate.
+
+# ── orangevault (connyay/orangevault) ──────────────────────────────────────
+
+[tasks."ov:setup"]
+description = "Clone joeblew999/orangevault if missing."
+run         = "nu scripts/setup.nu https://github.com/joeblew999/orangevault main orangevault"
+
+[tasks."ov:dev"]
+description = "Run orangevault locally — delegates to its own mise dev task."
+depends     = ["ov:setup"]
+dir         = "{{ config_root }}/orangevault"
+run         = "mise run dev"
+
+[tasks."ov:deploy"]
+description = "Deploy orangevault — delegates to its own mise deploy task."
+depends     = ["ov:setup"]
+dir         = "{{ config_root }}/orangevault"
+run         = "mise run deploy"
+
+[tasks."ov:tail"]
+description = "Tail orangevault Worker logs."
+dir         = "{{ config_root }}/orangevault"
+run         = "mise run tail"
+
+# ── nodewarden (joeblew999/nodewarden @ joeblew999 branch) ─────────────────
+
+[tasks."nw:setup"]
+description = "Clone joeblew999/nodewarden on joeblew999 branch if missing."
+run         = "nu scripts/setup.nu https://github.com/joeblew999/nodewarden joeblew999 nodewarden"
+
+[tasks."nw:dev"]
+description = "Run nodewarden locally — delegates to its own mise dev task."
+depends     = ["nw:setup"]
+dir         = "{{ config_root }}/nodewarden"
+run         = "mise run dev"
+
+[tasks."nw:deploy"]
+description = "Deploy nodewarden — delegates to its own mise 10-deploy task."
+depends     = ["nw:setup"]
+dir         = "{{ config_root }}/nodewarden"
+run         = "mise run 10-deploy"
+
+[tasks."nw:tail"]
+description = "Tail nodewarden Worker logs."
+dir         = "{{ config_root }}/nodewarden"
+run         = "mise run tail"
+
+# ── orchestrators ──────────────────────────────────────────────────────────
+
+[tasks."all:setup"]
+description = "Clone both runners."
+depends     = ["ov:setup", "nw:setup"]
