@@ -47,23 +47,31 @@ mise run nw:dev      # nodewarden
 
 Point any Bitwarden client (web / browser extension / desktop / mobile) at the orangevault URL for the full standard-client experience.
 
-## Account setup (one-time, then fully automated)
+## Account setup — fully automated, no web UI
 
-Bitwarden's zero-knowledge design means the server never sees the master password — registration crypto (PBKDF2 + RSA + AES) only happens in a real client. Modern `bw` CLI **removed `register`**, so account creation needs the web vault once. Everything *after* that is automated.
+Modern `bw` CLI removed `register`, so we wrote our own. `orangevault-cli` does proper Bitwarden client-side crypto (PBKDF2/RSA/AES via the `rbw` library) and talks to the server directly. Combined with the `client_credentials` grant patched into orangevault (commit `1a24a18`), there is **no manual web-UI step** for account or API-key provisioning.
 
-**Step 1 — manual, one-time per account** (in browser):
-1. Open https://orangevault.gedw99.workers.dev/
-2. Accept the self-signed cert warning if running locally
-3. Click **Create Account**, set email + master password
-4. Login, **Settings → Security → Keys → View API Key**
-5. Copy the `client_id` and `client_secret`
-
-**Step 2 — store creds in fnox keychain:**
 ```bash
+# Pick an email + master password (or read from fnox)
+fnox set --global -p keychain ORANGEVAULT_EMAIL
+fnox set --global -p keychain ORANGEVAULT_MASTER_PASSWORD
+
+# Create the account (real Bitwarden crypto)
+(cd orangevault && mise run cli:register)
+
+# Mint the API key — prints BW_CLIENTID + BW_CLIENTSECRET
+(cd orangevault && ./cli/target/release/orangevault-cli get-apikey \
+    --server $(fnox get ORANGEVAULT_DOMAIN) \
+    --email $(fnox get ORANGEVAULT_EMAIL) \
+    --password $(fnox get ORANGEVAULT_MASTER_PASSWORD))
+
+# Store creds in keychain, then bootstrap rbw
 fnox set --global -p keychain ORANGEVAULT_BW_CLIENTID
 fnox set --global -p keychain ORANGEVAULT_BW_CLIENTSECRET
-fnox set --global -p keychain ORANGEVAULT_MASTER_PASSWORD
+(cd orangevault && mise run rbw:bootstrap)
 ```
+
+After that, fnox's bitwarden provider (configured `backend = "rbw"`) can read/write secrets in orangevault transparently from any mise task — no master password on disk except in the keychain, no web-UI clicks, fully scriptable across machines.
 
 **Step 3 — bootstrap bw CLI against orangevault** (from `vault/orangevault/`):
 ```bash
@@ -102,8 +110,10 @@ The remote variant is the real proof: keychain → CF Workers → CF D1 → keyc
 | `mise run ov:tail` / `mise run nw:tail` | Tail Worker logs |
 | `mise run demo:sync` | Two-way sync demo against local dev |
 | `mise run demo:sync:remote` | Two-way sync demo against the deployed orangevault |
-| (in `orangevault/`) `mise run bw:bootstrap` | Wire bw CLI to orangevault using API key + master password from fnox |
-| (in `orangevault/`) `mise run bw:status` | Show current bw CLI auth state |
+| `mise run test:flow` | **7-step end-to-end test**: register → admin (auth) → bw login + sync → mint API key → bw login --apikey → cleanup |
+| (in `orangevault/`) `mise run cli:build` | Build `orangevault-cli` (register + get-apikey) |
+| (in `orangevault/`) `mise run rbw:bootstrap` | Wire rbw daemon to orangevault using API key + master password from fnox |
+| (in `orangevault/`) `mise run bw:bootstrap` | Same flow with the Node `bw` CLI (alternative to rbw) |
 
 Both `ov:*` and `nw:*` tasks delegate into their respective runner's own `mise.toml`. The vault repo only carries the clone helpers, the demo, and the orchestrator.
 
