@@ -76,5 +76,13 @@ depends     = ["ov:setup", "nw:setup"]
 # ── demos ──────────────────────────────────────────────────────────────────
 
 [tasks."demo:sync"]
-description = "Two-way sync demo: fnox keychain ⇄ orangevault via orangevault's HTTP API. Uses dummy secret FNOX_OV_DEMO. Requires `mise run ov:dev` running in another terminal."
+description = "Two-way sync demo against local dev: fnox keychain ⇄ https://localhost:8787. Requires `mise run ov:dev` running in another terminal."
 run         = "nu scripts/sync-demo.nu"
+
+[tasks."demo:sync:remote"]
+description = "Two-way sync demo against the deployed orangevault. Reads target URL from fnox ORANGEVAULT_DOMAIN."
+shell       = "nu -c"
+run = '''
+$env.OV_SERVER = (^fnox get ORANGEVAULT_DOMAIN | str trim)
+^nu scripts/sync-demo.nu
+'''

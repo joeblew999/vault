@@ -6,42 +6,44 @@
 # accounts). Uses placeholder crypto values — same trick orangevault's own
 # integration tests use.
 #
-# Requires:
-#   - orangevault running at https://localhost:8787 (mise run ov:dev)
-#   - D1 migrations applied (mise run ov:migrate, or wrangler d1 migrations apply)
+# Target server:
+#   - default: https://localhost:8787 (requires mise run ov:dev)
+#   - override: set OV_SERVER env var (e.g. mise run demo:sync:remote)
 
-const SERVER    = "https://localhost:8787"
-const EMAIL     = "demo@orangevault.local"
-const PWHASH    = "dGVzdA=="                # placeholder masterPasswordHash
-const FNOX_KEY  = "FNOX_OV_DEMO"
-const ITEM_NAME = "2.fnox-sync-demo"        # "2." = Bitwarden CipherString prefix
+const DEFAULT_SERVER = "https://localhost:8787"
+const EMAIL          = "demo@orangevault.local"
+const PWHASH         = "dGVzdA=="                # placeholder masterPasswordHash
+const FNOX_KEY       = "FNOX_OV_DEMO"
+const ITEM_NAME      = "2.fnox-sync-demo"        # "2." = Bitwarden CipherString prefix
 
 def main [] {
+    let server = ($env.OV_SERVER? | default $DEFAULT_SERVER)
     print "═══ Two-Way Sync: fnox keychain ⇄ orangevault ═══"
+    print $"  target: ($server)"
     print ""
 
-    verify_server
-    register_if_needed
-    let token = (login)
+    verify_server $server
+    register_if_needed $server
+    let token = (login $server)
     print ""
 
-    sync_fnox_to_ov $token
-    sync_ov_to_fnox $token
+    sync_fnox_to_ov $server $token
+    sync_ov_to_fnox $server $token
 
     print ""
     print "✓ demo complete — both sides hold the same value"
 }
 
-def verify_server [] {
-    let code = (^curl -k -s -o /dev/null -w "%{http_code}" $"($SERVER)/alive" | str trim)
+def verify_server [server: string] {
+    let code = (^curl -k -s -o /dev/null -w "%{http_code}" $"($server)/alive" | str trim)
     if $code != "200" {
-        print --stderr $"✗ orangevault not responding at ($SERVER) — run: mise run ov:dev"
+        print --stderr $"✗ orangevault not responding at ($server)"
         exit 1
     }
-    print $"✓ orangevault live at ($SERVER)"
+    print $"✓ orangevault live at ($server)"
 }
 
-def register_if_needed [] {
+def register_if_needed [server: string] {
     let body = ({
         name: "Sync Demo",
         email: $EMAIL,
@@ -54,7 +56,7 @@ def register_if_needed [] {
             encryptedPrivateKey: "2.demo-private-key-placeholder",
         },
     } | to json)
-    let res = (^curl -k -s -o /dev/null -w "%{http_code}" -X POST $"($SERVER)/identity/accounts/register" -H "Content-Type: application/json" -d $body | str trim)
+    let res = (^curl -k -s -o /dev/null -w "%{http_code}" -X POST $"($server)/identity/accounts/register" -H "Content-Type: application/json" -d $body | str trim)
     if $res == "200" {
         print $"✓ registered new user ($EMAIL)"
     } else {
@@ -62,9 +64,9 @@ def register_if_needed [] {
     }
 }
 
-def login [] {
+def login [server: string] {
     let body = $"grant_type=password&username=($EMAIL)&password=($PWHASH)&scope=api+offline_access&client_id=web&deviceType=10&deviceIdentifier=demo-device-id&deviceName=Demo"
-    let res = (^curl -k -s -X POST $"($SERVER)/identity/connect/token" -H "Content-Type: application/x-www-form-urlencoded" -d $body)
+    let res = (^curl -k -s -X POST $"($server)/identity/connect/token" -H "Content-Type: application/x-www-form-urlencoded" -d $body)
     let parsed = ($res | from json)
     let err = ($parsed | get -o error)
     if $err != null {
@@ -77,15 +79,15 @@ def login [] {
     $token
 }
 
-def find_item [token: string] {
-    let sync = (^curl -k -s $"($SERVER)/api/sync" -H $"Authorization: Bearer ($token)" | from json)
+def find_item [server: string, token: string] {
+    let sync = (^curl -k -s $"($server)/api/sync" -H $"Authorization: Bearer ($token)" | from json)
     let ciphers = ($sync | get -o Ciphers | default [])
     let matches = ($ciphers | where {|c| ($c | get -o Name) == $ITEM_NAME})
     if ($matches | is-empty) { null } else { $matches | first }
 }
 
-def upsert_item [token: string, value: string] {
-    let existing = (find_item $token)
+def upsert_item [server: string, token: string, value: string] {
+    let existing = (find_item $server $token)
     let body = ({
         type: 2,
         name: $ITEM_NAME,
@@ -93,23 +95,23 @@ def upsert_item [token: string, value: string] {
         secureNote: { type: 0 },
     } | to json)
     if $existing == null {
-        ^curl -k -s -o /dev/null -X POST $"($SERVER)/api/ciphers" -H $"Authorization: Bearer ($token)" -H "Content-Type: application/json" -d $body
+        ^curl -k -s -o /dev/null -X POST $"($server)/api/ciphers" -H $"Authorization: Bearer ($token)" -H "Content-Type: application/json" -d $body
     } else {
         let id = ($existing | get Id)
-        ^curl -k -s -o /dev/null -X PUT $"($SERVER)/api/ciphers/($id)" -H $"Authorization: Bearer ($token)" -H "Content-Type: application/json" -d $body
+        ^curl -k -s -o /dev/null -X PUT $"($server)/api/ciphers/($id)" -H $"Authorization: Bearer ($token)" -H "Content-Type: application/json" -d $body
     }
 }
 
-def sync_fnox_to_ov [token: string] {
+def sync_fnox_to_ov [server: string, token: string] {
     print "── fnox → orangevault ─────────────────────────"
     let value = $"hello-from-fnox-(random chars --length 8)"
     $value | ^fnox set --global -p keychain $FNOX_KEY
     print $"  fnox        [($FNOX_KEY)] = ($value)"
 
-    upsert_item $token $value
+    upsert_item $server $token $value
     print $"  orangevault [($ITEM_NAME)] ← ($value)  \(pushed\)"
 
-    let readback = (find_item $token | get -o Notes | default "(missing)")
+    let readback = (find_item $server $token | get -o Notes | default "(missing)")
     if $readback == $value {
         print "  ✓ verified: ov.Notes == fnox value"
     } else {
@@ -118,14 +120,14 @@ def sync_fnox_to_ov [token: string] {
     }
 }
 
-def sync_ov_to_fnox [token: string] {
+def sync_ov_to_fnox [server: string, token: string] {
     print ""
     print "── orangevault → fnox ─────────────────────────"
     let new_value = $"changed-on-ov-(random chars --length 8)"
-    upsert_item $token $new_value
+    upsert_item $server $token $new_value
     print $"  orangevault [($ITEM_NAME)] = ($new_value)  \(mutated server-side\)"
 
-    let pulled = (find_item $token | get -o Notes | default "(missing)")
+    let pulled = (find_item $server $token | get -o Notes | default "(missing)")
     $pulled | ^fnox set --global -p keychain $FNOX_KEY
     print $"  fnox        [($FNOX_KEY)] ← ($pulled)  \(pulled\)"
 
