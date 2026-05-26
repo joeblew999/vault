@@ -47,6 +47,36 @@ mise run nw:dev      # nodewarden
 
 Point any Bitwarden client (web / browser extension / desktop / mobile) at the orangevault URL for the full standard-client experience.
 
+## Account setup (one-time, then fully automated)
+
+Bitwarden's zero-knowledge design means the server never sees the master password — registration crypto (PBKDF2 + RSA + AES) only happens in a real client. Modern `bw` CLI **removed `register`**, so account creation needs the web vault once. Everything *after* that is automated.
+
+**Step 1 — manual, one-time per account** (in browser):
+1. Open https://orangevault.gedw99.workers.dev/
+2. Accept the self-signed cert warning if running locally
+3. Click **Create Account**, set email + master password
+4. Login, **Settings → Security → Keys → View API Key**
+5. Copy the `client_id` and `client_secret`
+
+**Step 2 — store creds in fnox keychain:**
+```bash
+fnox set --global -p keychain ORANGEVAULT_BW_CLIENTID
+fnox set --global -p keychain ORANGEVAULT_BW_CLIENTSECRET
+fnox set --global -p keychain ORANGEVAULT_MASTER_PASSWORD
+```
+
+**Step 3 — bootstrap bw CLI against orangevault** (from `vault/orangevault/`):
+```bash
+mise run bw:bootstrap
+# → bw config server $ORANGEVAULT_DOMAIN
+# → bw login --apikey
+# → bw unlock --raw, prints BW_SESSION
+```
+
+After this, every mise task / fnox bitwarden-provider lookup talks to orangevault automatically. New machines just need the same fnox keychain entries (set via fnox + iCloud Keychain sync, or imported via `fnox export`).
+
+**Future:** a small Rust binary in `orangevault/` that does proper PBKDF2/RSA/AES client-side would make Step 1 scriptable too. Not built yet; the one-time UI step is acceptable per the nodewarden pattern.
+
 ## Two-way fnox ⇄ orangevault sync demo
 
 Uses a dummy `FNOX_OV_DEMO` secret. Push to orangevault as a Bitwarden secure-note → mutate server-side → pull back into fnox keychain → verify both directions match.
@@ -72,6 +102,8 @@ The remote variant is the real proof: keychain → CF Workers → CF D1 → keyc
 | `mise run ov:tail` / `mise run nw:tail` | Tail Worker logs |
 | `mise run demo:sync` | Two-way sync demo against local dev |
 | `mise run demo:sync:remote` | Two-way sync demo against the deployed orangevault |
+| (in `orangevault/`) `mise run bw:bootstrap` | Wire bw CLI to orangevault using API key + master password from fnox |
+| (in `orangevault/`) `mise run bw:status` | Show current bw CLI auth state |
 
 Both `ov:*` and `nw:*` tasks delegate into their respective runner's own `mise.toml`. The vault repo only carries the clone helpers, the demo, and the orchestrator.
 
