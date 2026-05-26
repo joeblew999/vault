@@ -58,7 +58,7 @@ def register_if_needed [] {
     if $res == "200" {
         print $"✓ registered new user ($EMAIL)"
     } else {
-        print $"✓ ($EMAIL) already registered   register HTTP=($res)"
+        print $"✓ ($EMAIL) already registered \(register HTTP=($res)\)"
     }
 }
 
@@ -73,7 +73,7 @@ def login [] {
     }
     let token = ($parsed | get access_token)
     let preview = ($token | str substring 0..30)
-    print $"✓ logged in   token=($preview)…"
+    print $"✓ logged in \(access_token: ($preview)…\)"
     $token
 }
 
@@ -107,9 +107,9 @@ def sync_fnox_to_ov [token: string] {
     print $"  fnox        [($FNOX_KEY)] = ($value)"
 
     upsert_item $token $value
-    print $"  orangevault [($ITEM_NAME)] ← ($value)  [pushed]"
+    print $"  orangevault [($ITEM_NAME)] ← ($value)  \(pushed\)"
 
-    let readback = (find_item $token | get -o Notes | default "missing")
+    let readback = (find_item $token | get -o Notes | default "(missing)")
     if $readback == $value {
         print "  ✓ verified: ov.Notes == fnox value"
     } else {
@@ -123,11 +123,11 @@ def sync_ov_to_fnox [token: string] {
     print "── orangevault → fnox ─────────────────────────"
     let new_value = $"changed-on-ov-(random chars --length 8)"
     upsert_item $token $new_value
-    print $"  orangevault [($ITEM_NAME)] = ($new_value)  [mutated server-side]"
+    print $"  orangevault [($ITEM_NAME)] = ($new_value)  \(mutated server-side\)"
 
-    let pulled = (find_item $token | get -o Notes | default "missing")
+    let pulled = (find_item $token | get -o Notes | default "(missing)")
     $pulled | ^fnox set --global -p keychain $FNOX_KEY
-    print $"  fnox        [($FNOX_KEY)] ← ($pulled)  [pulled]"
+    print $"  fnox        [($FNOX_KEY)] ← ($pulled)  \(pulled\)"
 
     let fnox_value = (^fnox get $FNOX_KEY | str trim)
     if $fnox_value == $new_value {
