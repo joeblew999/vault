@@ -103,7 +103,7 @@ def step3_admin_lists_user [email: string] {
 
 def step4_bw_login [email: string, password: string] {
     print ""
-    print "── 4/5 bw login proves crypto matches ────────"
+    print "── 4/5 bw login + sync prove the protocol ────"
     try { ^bw logout out+err> /dev/null }
     try { ^bw config server $OV_SERVER out+err> /dev/null }
     let login = (^bw login $email $password --raw | complete)
@@ -117,7 +117,29 @@ def step4_bw_login [email: string, password: string] {
         print --stderr $"  ✗ bw login returned empty/short session"
         exit 1
     }
-    print $"  ✓ bw login succeeded, session=($session | str substring 0..30)…"
+    print $"  ✓ bw login   session=($session | str substring 0..30)…"
+
+    # Pull the full vault — exercises /api/sync (RSA key load + cipher list
+    # + folder list + sends + collections + policies + profile). Fails if
+    # any of those endpoints is broken for a freshly-registered account.
+    let sync = (^bw sync --session $session | complete)
+    if $sync.exit_code != 0 {
+        print --stderr $"  ✗ bw sync failed:"
+        print --stderr $"    ($sync.stderr | str substring 0..500)"
+        exit 1
+    }
+    print "  ✓ bw sync    full vault pulled"
+
+    # New account → empty cipher list. Confirms the list endpoint returns
+    # a well-formed (empty) array, not an error.
+    let items = (^bw list items --session $session | complete)
+    if $items.exit_code != 0 {
+        print --stderr $"  ✗ bw list items failed:"
+        print --stderr $"    ($items.stderr | str substring 0..500)"
+        exit 1
+    }
+    let parsed = ($items.stdout | from json)
+    print $"  ✓ bw list    ($parsed | length) item\(s\) in fresh vault"
 }
 
 def step5_bw_logout [] {
