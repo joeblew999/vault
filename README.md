@@ -38,15 +38,28 @@ mise run ov:dev      # https://localhost:8787  — accept self-signed cert in br
 mise run nw:dev      # nodewarden
 ```
 
+## Live deployments
+
+| Runner | URL | Web vault |
+|---|---|---|
+| orangevault | https://orangevault.gedw99.workers.dev | https://orangevault.gedw99.workers.dev/ |
+| nodewarden | https://nodewarden.gedw99.workers.dev | — |
+
+Point any Bitwarden client (web / browser extension / desktop / mobile) at the orangevault URL for the full standard-client experience.
+
 ## Two-way fnox ⇄ orangevault sync demo
 
-With `mise run ov:dev` running in another terminal:
+Uses a dummy `FNOX_OV_DEMO` secret. Push to orangevault as a Bitwarden secure-note → mutate server-side → pull back into fnox keychain → verify both directions match.
 
 ```bash
+# Against local dev (mise run ov:dev must be running in another terminal)
 mise run demo:sync
+
+# Against the deployed orangevault (no dev server needed)
+mise run demo:sync:remote     # reads ORANGEVAULT_DOMAIN from fnox
 ```
 
-The demo script (`scripts/sync-demo.nu`) uses a dummy secret (`FNOX_OV_DEMO`), pushes it to orangevault as a Bitwarden secure-note via the HTTP API, mutates it server-side, pulls it back into fnox keychain — verifies the round-trip both directions. See [docs proof in the latest sync output](#).
+The remote variant is the real proof: keychain → CF Workers → CF D1 → keychain, end-to-end.
 
 ## Task reference
 
@@ -57,7 +70,8 @@ The demo script (`scripts/sync-demo.nu`) uses a dummy secret (`FNOX_OV_DEMO`), p
 | `mise run ov:dev` / `mise run nw:dev` | Run locally (wrangler dev; ov uses HTTPS) |
 | `mise run ov:deploy` / `mise run nw:deploy` | Deploy to Workers |
 | `mise run ov:tail` / `mise run nw:tail` | Tail Worker logs |
-| `mise run demo:sync` | Two-way fnox ⇄ orangevault sync demo |
+| `mise run demo:sync` | Two-way sync demo against local dev |
+| `mise run demo:sync:remote` | Two-way sync demo against the deployed orangevault |
 
 Both `ov:*` and `nw:*` tasks delegate into their respective runner's own `mise.toml`. The vault repo only carries the clone helpers, the demo, and the orchestrator.
 
