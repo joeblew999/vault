@@ -26,18 +26,19 @@ def main [] {
 
     step1_preflight
     let creds = (step2_register)
-    step3_admin_lists_user $creds.email
+    let user_id = (step3_admin_lists_user $creds.email)
     step4_bw_login $creds.email $creds.password
     let api = (step5_get_apikey $creds.email $creds.password)
     step6_apikey_login $api.client_id $api.client_secret
     step7_bw_logout
+    step8_admin_delete_user $user_id $creds.email
 
     print ""
     print "✓ all steps passed"
 }
 
 def step1_preflight [] {
-    print "── 1/7 preflight ─────────────────────────────"
+    print "── 1/8 preflight ─────────────────────────────"
     if not ($CLI_BIN | path exists) {
         print --stderr $"  ✗ ($CLI_BIN) missing — run: mise run cli:build"
         exit 1
@@ -66,7 +67,7 @@ def step1_preflight [] {
 
 def step2_register [] {
     print ""
-    print "── 2/7 register via orangevault-cli ──────────"
+    print "── 2/8 register via orangevault-cli ──────────"
     let suffix = (random chars --length 8 | str downcase)
     let email = $"e2e-($suffix)@orangevault.local"
     let password = $"pw-(random chars --length 16)"
@@ -91,7 +92,7 @@ def step2_register [] {
 
 def step3_admin_lists_user [email: string] {
     print ""
-    print "── 3/7 admin ListUsers contains new account ──"
+    print "── 3/8 admin ListUsers contains new account ──"
 
     # Verify auth gate first: unauthenticated request must be rejected.
     let unauth_code = (
@@ -126,11 +127,12 @@ def step3_admin_lists_user [email: string] {
     }
     let id = ($found | first | get id)
     print $"  ✓ ($email) found  id=($id)"
+    $id
 }
 
 def step4_bw_login [email: string, password: string] {
     print ""
-    print "── 4/7 bw login + sync prove the protocol ────"
+    print "── 4/8 bw login + sync prove the protocol ────"
     try { ^bw logout out+err> /dev/null }
     try { ^bw config server $OV_SERVER out+err> /dev/null }
     let login = (^bw login $email $password --raw | complete)
@@ -171,7 +173,7 @@ def step4_bw_login [email: string, password: string] {
 
 def step5_get_apikey [email: string, password: string] {
     print ""
-    print "── 5/7 orangevault-cli get-apikey ────────────"
+    print "── 5/8 orangevault-cli get-apikey ────────────"
     try { ^bw logout out+err> /dev/null }
     let out = (
         ^($CLI_BIN) get-apikey
@@ -200,7 +202,7 @@ def step5_get_apikey [email: string, password: string] {
 
 def step6_apikey_login [client_id: string, client_secret: string] {
     print ""
-    print "── 6/7 bw login --apikey \(no master password\) ─"
+    print "── 6/8 bw login --apikey \(no master password\) ─"
     $env.BW_CLIENTID = $client_id
     $env.BW_CLIENTSECRET = $client_secret
     try { ^bw logout out+err> /dev/null }
@@ -220,7 +222,30 @@ def step6_apikey_login [client_id: string, client_secret: string] {
 
 def step7_bw_logout [] {
     print ""
-    print "── 7/7 cleanup ───────────────────────────────"
+    print "── 7/8 cleanup (bw logout) ───────────────────────────────"
     try { ^bw logout out+err> /dev/null }
     print "  ✓ bw logged out"
+}
+
+def step8_admin_delete_user [user_id: string, email: string] {
+    print ""
+    print "── 8/8 admin DeleteUser \(cleanup\) ────────────"
+    let token = (^fnox get ORANGEVAULT_ADMIN_TOKEN | str trim)
+    let body = ({ userId: $user_id } | to json)
+    let resp = (
+        ^curl -s -w "\n%{http_code}" -X POST
+            -H "Content-Type: application/json"
+            -H $"Authorization: Bearer ($token)"
+            -d $body
+            $"($ADMIN_SERVER)/orangevault_admin.v1.AdminService/DeleteUser"
+    )
+    let parts = ($resp | lines)
+    let code = ($parts | last | str trim)
+    let body = ($parts | drop 1 | str join "\n")
+    if $code != "200" {
+        print --stderr $"  ✗ DeleteUser HTTP ($code): ($body)"
+        exit 1
+    }
+    let deleted = ($body | from json | get deletedRows)
+    print $"  ✓ deleted ($email)  rows=($deleted)"
 }
