@@ -1,8 +1,3 @@
-# Cloned upstream runners — materialized by `mise run <ns>:setup`.
-# Not vendored; the vault repo is pure orchestration.
-/orangevault/
-/nodewarden/
-
 # Local-only artifacts
 .dev.vars
 *.local.toml
